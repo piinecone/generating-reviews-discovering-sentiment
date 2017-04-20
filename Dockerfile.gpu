@@ -1,0 +1,24 @@
+#
+# Sentiment Neuron Dockerfile (Tensorflow)
+# Tensorflow + GPU
+#
+# @see https://hub.docker.com/r/tensorflow/tensorflow/tags/
+# To run on Nvidia Docker use
+# docker run -it --device=/dev/nvidiactl --device=/dev/nvidia-uvm --device=/dev/nvidia0 --volume-driver nvidia-docker -v nvidia_driver_367.57:/usr/local/nvidia:ro $IMAGE $CMD
+#
+FROM tensorflow/tensorflow:latest-gpu-py3
+
+MAINTAINER Loreto Parisi loretoparisi@gmail.com
+
+RUN pip install \
+    numpy \
+    tqdm \
+    scipy \
+    scikit-learn
+
+WORKDIR /sentiment/
+
+COPY ./ /sentiment/
+
+CMD nvidia-smi -q
+CMD ["bash"]

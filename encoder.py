@@ -65,7 +65,7 @@ def mlstm(inputs, c, h, M, ndim, scope='lstm', wn=False):
     for idx, x in enumerate(inputs):
         m = tf.matmul(x, wmx)*tf.matmul(h, wmh)
         z = tf.matmul(x, wx) + tf.matmul(m, wh) + b
-        i, f, o, u = tf.split(1, 4, z)
+        i, f, o, u = tf.split(z, num_or_size_splits=4, axis=1)
         i = tf.nn.sigmoid(i)
         f = tf.nn.sigmoid(f)
         o = tf.nn.sigmoid(o)
@@ -81,22 +81,22 @@ def mlstm(inputs, c, h, M, ndim, scope='lstm', wn=False):
             h = o*tf.tanh(c)
         inputs[idx] = h
         cs.append(c)
-    cs = tf.pack(cs)
+    cs = tf.stack(cs)
     return inputs, cs, c, h
 
 
 def model(X, S, M=None, reuse=False):
-    nsteps = X.get_shape()[1]
-    cstart, hstart = tf.unpack(S, num=hps.nstates)
+    nsteps = X.get_shape()[1].value
+    cstart, hstart = tf.unstack(S, num=hps.nstates)
     with tf.variable_scope('model', reuse=reuse):
         words = embd(X, hps.nembd)
-        inputs = [tf.squeeze(v, [1]) for v in tf.split(1, nsteps, words)]
+        inputs = [tf.squeeze(v, [1]) for v in tf.split(words, num_or_size_splits=nsteps, axis=1)]
         hs, cells, cfinal, hfinal = mlstm(
             inputs, cstart, hstart, M, hps.nhidden, scope='rnn', wn=hps.rnn_wn)
-        hs = tf.reshape(tf.concat(1, hs), [-1, hps.nhidden])
+        hs = tf.reshape(tf.concat(hs, 1), [-1, hps.nhidden])
         logits = fc(
             hs, hps.nvocab, act=lambda x: x, wn=hps.out_wn, scope='out')
-    states = tf.pack([cfinal, hfinal], 0)
+    states = tf.stack([cfinal, hfinal], 0)
     return cells, states, logits
 
 
@@ -143,7 +143,7 @@ class Model(object):
         cells, states, logits = model(X, S, M, reuse=False)
 
         sess = tf.Session()
-        tf.initialize_all_variables().run(session=sess)
+        tf.global_variables_initializer().run(session=sess)
 
         def seq_rep(xmb, mmb, smb):
             return sess.run(states, {X: xmb, M: mmb, S: smb})
@@ -201,9 +201,53 @@ class Model(object):
             Fs = np.concatenate(Fs, axis=1).transpose(1, 0, 2)
             return Fs
 
+        def generate_sequence(x_start, override={}, sampling = 0, len_add = '.'):
+            len_start = len(x_start)
+            x = bytearray(preprocess(x_start))
+
+            string_terminate = isinstance(len_add, str)
+            len_end = (-1 if string_terminate else (len_start + len_add))
+
+            ndone = 0
+            last_chr = chr(x[-1])
+            smb = np.zeros((2, 1, hps.nhidden))
+
+            while True if string_terminate else ndone <= len_end:
+                xsubseq = x[ndone:ndone+nsteps]
+                ndone += len(xsubseq)
+                xmb, mmb = batch_pad([xsubseq], 1, nsteps)
+
+                #Override salient neurons
+                for neuron, value in override.items():
+                    smb[:, :, neuron] = value        
+
+                if ndone <= len_start:
+                    #Prime hidden state with full steps
+                    smb = sess.run(states, {X: xmb, S: smb, M: mmb})
+                else:
+                    #Incrementally add characters
+                    outs, smb = sess.run([logits, states], {X: xmb, S: smb, M: mmb})
+                    out = outs[-1]
+
+                    #Do uniform weighted sampling always or only after ' '
+                    if (sampling == 1 and last_chr == ' ') or sampling == 2:
+                        squashed = np.exp(out) / np.sum(np.exp(out), axis=0)
+                        last_chr = chr(np.random.choice(len(squashed), p=squashed))
+                    else:
+                        last_chr = chr(np.argmax(out))
+
+                x.append(ord(last_chr))
+
+                if string_terminate and (last_chr in len_add):
+                    len_add = len_add.replace(last_chr, "", 1)
+                    if len(len_add) == 0:
+                        break
+            
+            return(x.decode()) 
+
         self.transform = transform
         self.cell_transform = cell_transform
-
+        self.generate_sequence = generate_sequence
 
 if __name__ == '__main__':
     mdl = Model()
