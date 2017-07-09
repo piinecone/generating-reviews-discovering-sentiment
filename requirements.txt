@@ -1,0 +1,7 @@
+numpy
+tqdm
+tensorflow-gpu
+scipy
+scikit-learn
+tornado
+html
