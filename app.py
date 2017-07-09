@@ -38,6 +38,7 @@ def main():
     parse_command_line()
 
     sentiment_model = SentimentModel()
+    sentiment_model.transform([''])
     context = {
         "sentiment_model": sentiment_model,
     }
