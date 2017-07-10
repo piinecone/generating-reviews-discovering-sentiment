@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
+import logging
+import json
+import time
 import tornado.ioloop
 import tornado.web
 import tornado.escape
+
 from tornado.options import define, options, parse_command_line
 from encoder import Model as SentimentModel
-import json
 
 define("port", default=5000, help="server port", type=int)
 define("debug", default=False, help="enable debug mode")
@@ -20,7 +23,10 @@ class PredictSentimentHandler(tornado.web.RequestHandler):
         messages = data['messages']
         ids = [message['id'] for message in messages]
         texts = [message['text'] for message in messages]
+
+        start = time.time()
         predictions = self.model.transform(texts)
+        logging.info('[sentiment] inference took %fs', time.time() - start)
 
         results = []
         for i in range(len(texts)):
@@ -54,7 +60,7 @@ def main():
     )
 
     app.listen(options.port)
-    print('[server] listening on port', options.port)
+    logging.info('[server] listening on port %s', str(options.port))
     tornado.ioloop.IOLoop.current().start()
 
 if __name__ == "__main__":
