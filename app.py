@@ -13,6 +13,11 @@ from encoder import Model as SentimentModel
 define("port", default=5000, help="server port", type=int)
 define("debug", default=False, help="enable debug mode")
 
+class HealthCheckHandler(tornado.web.RequestHandler):
+    @tornado.web.asynchronous
+    def get(self):
+        self.finish()
+
 class PredictSentimentHandler(tornado.web.RequestHandler):
     def initialize(self, sentiment_model):
         self.model = sentiment_model
@@ -50,6 +55,7 @@ def main():
     }
 
     routes = [
+        (r"/health", HealthCheckHandler),
         (r"/sentiment/predict", PredictSentimentHandler, context),
     ]
 
